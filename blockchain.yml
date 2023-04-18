@@ -26,6 +26,12 @@ parameters:
   attach_workspace:
     type: string
     default: /tmp/persist_workspace
+  rust_version:
+    type: string
+    default: stable
+  nightly_version:
+    type: string
+    default: nightly
 
 executors:
   build:
@@ -135,7 +141,7 @@ jobs:
           repo: '<< pipeline.parameters.terraform-app >>-<< parameters.environment >>'
           registry-id: AWS_ID
           tag: "<< parameters.tag >>"
-          extra-build-args: '--secret id=aws,src=$HOME/.aws/credentials --build-arg ENV=<< parameters.environment >>'
+          extra-build-args: '--secret id=aws,src=$HOME/.aws/credentials --build-arg ENV=<< parameters.environment >> --build-arg RUST_VERSION=<< pipeline.parameters.rust_version >> --build-arg NIGHTLY_VERSION=<< pipeline.parameters.nightly_version >>'
           skip-when-tags-exist: true
           push-image: false
       - run:
