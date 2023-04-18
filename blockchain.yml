@@ -1,0 +1,274 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine.
+# See: https://circleci.com/docs/2.0/configuration-reference
+version: 2.1
+
+# build the Docker image and run the tests
+# if all the tests pass, push the image to ECR
+# then invoke Terraform Cloud to deploy the new image
+
+orbs:
+  aws-ecr: circleci/aws-ecr@8.1.2
+  terraform: circleci/terraform@3.2.0
+
+parameters:
+  terraform-app:
+    type: string
+    default: blockchain
+  terraform-setup:
+    type: string
+    default: deploy/setup/blockchain
+  terraform-version:
+    type: string
+    default: 1.2.2
+  primary_region:
+    type: string
+    default: "usw2"
+  attach_workspace:
+    type: string
+    default: /tmp/persist_workspace
+
+executors:
+  build:
+    machine:
+      image: ubuntu-2004:202201-01
+
+commands:
+  terraform-deploy:
+    parameters:
+      terraform-workspace:
+        type: string
+    steps:
+      - run:
+          name: "Checkout Terraform sources"
+          command: |
+            git clone git@github.com:engi-network/deploy.git
+      - run:
+          name: Create .terraformrc file locally
+          command: |
+            echo "credentials \"app.terraform.io\" {token =
+            \"$TERRAFORM_TOKEN\"}" > $HOME/.terraformrc
+      - terraform/install:
+          terraform_version: << pipeline.parameters.terraform-version >>
+      - run:
+          name: Create wrapper for setting TF_WORKSPACE
+          command: |
+            echo 'TF_WORKSPACE="<< parameters.terraform-workspace >>" /usr/local/bin/terraform $*' > ~/bin/terraform
+            chmod +x ~/bin/terraform
+      - terraform/plan:
+          path: << pipeline.parameters.terraform-setup >>
+          out: /tmp/terraform.plan
+      - terraform/apply:
+          path: << pipeline.parameters.terraform-setup >>
+          plan: /tmp/terraform.plan
+
+# Define a job to be invoked later in a workflow.
+# See: https://circleci.com/docs/2.0/configuration-reference/#jobs
+jobs:
+  deploy:
+    executor: build
+    parameters:
+      environment:
+        type: string
+      region:
+        type: string
+    steps:
+      - when:
+          condition:
+            equal: [ << pipeline.parameters.primary_region >>, << parameters.region >> ]
+          steps:
+            - terraform-deploy:
+                terraform-workspace: '<< pipeline.parameters.terraform-app >>-<< parameters.environment >>'
+      - unless:
+          condition:
+            equal: [ << pipeline.parameters.primary_region >>, << parameters.region >> ]
+          steps:
+            - terraform-deploy:
+                terraform-workspace: '<< pipeline.parameters.terraform-app >>-<< parameters.environment >>-<< parameters.region >>'
+  build:
+    executor: build
+    parameters:
+      environment:
+        type: string
+      tag:
+        type: string
+        default: latest
+    steps:
+      - checkout
+      - run:
+          name: "Get current spec version"
+          command: |
+            set -x
+      - restore_cache:
+          key: v1-<< pipeline.parameters.terraform-app >>-<< parameters.environment >>-spec-version-
+      - restore_cache:
+          key: v1-<< pipeline.parameters.terraform-app >>-<< parameters.environment >>-tag-<< parameters.tag >>-
+      - run:
+          name: Load cached variables
+          command: |
+            set -x
+            CACHE_DIR=~/.cache
+            mkdir -p $CACHE_DIR
+
+            for key in GIT_COMMIT SPEC_VERSION; do
+              if [ -e $CACHE_DIR/$key ]; then
+                key_build_num="${key}_build_num"
+                . $CACHE_DIR/$key
+                echo "[Set variable from cache: $key=\"${!key}\" (build #=${!key_build_num})]"
+                {
+                  echo "export CACHE_$key=\"${!key}\""
+                  echo "export CACHE_${key}_build_num=\"${!key_build_num}\""
+                } >> $BASH_ENV
+              fi
+            done
+
+            GIT_COMMIT=$(git log -1 --format=%h)
+            echo "export GIT_COMMIT=\"$GIT_COMMIT\"" >> $BASH_ENV
+      - aws-ecr/ecr-login:
+          registry-id: AWS_ID
+      - aws-ecr/create-repo:
+          repo: '<< pipeline.parameters.terraform-app >>-<< parameters.environment >>'
+          repo-scan-on-push: false
+          region: $AWS_REGION
+          profile-name: default
+          public-registry: false
+      - aws-ecr/build-image:
+          repo: '<< pipeline.parameters.terraform-app >>-<< parameters.environment >>'
+          registry-id: AWS_ID
+          tag: "<< parameters.tag >>"
+          extra-build-args: '--secret id=aws,src=$HOME/.aws/credentials --build-arg ENV=<< parameters.environment >>'
+          skip-when-tags-exist: true
+          push-image: false
+      - run:
+          name: Push ECR image to AWS
+          command: |
+            read ECR_REPO ECR_TAG < <(
+              docker images \
+                -f 'reference=*/<< pipeline.parameters.terraform-app >>-<< parameters.environment >>:<< parameters.tag >>' \
+                --format '{{.Repository}} {{.Tag}}'
+            )
+            ECR_REF="$ECR_REPO:$ECR_TAG"
+            docker image push $ECR_REF
+            echo export ECR_REF=$ECR_REF >> $BASH_ENV
+      - run:
+          name: Set current spec version and git commit for caching
+          command: |
+            set -x
+
+            container_id=$(docker create $ECR_REF)
+            docker cp $container_id:/release/build.txt .build.txt
+            . .build.txt
+            echo SPEC_VERSION=$SPEC_VERSION >> $BASH_ENV
+            echo CONTAINER_ID=$container_id >> $BASH_ENV
+
+            for key in GIT_COMMIT SPEC_VERSION; do
+              echo "[Saving key for cache: $key=\"${!key}\"]"
+              {
+                echo "$key=\"${!key}\""
+                echo "${key}_build_num=\"$CIRCLE_BUILD_NUM\""
+              } > ~/.cache/$key
+            done
+      - run:
+          name: Apply runtime upgrade if spec_version changed
+          no_output_timeout: "5m"
+          command: |
+            # Do not upgrade from branch builds (latest tag)
+            if [[ "<< parameters.tag >>" != "latest" ]]; then
+              if [[ "$SPEC_VERSION" != "$CACHE_SPEC_VERSION" ]]; then
+                echo "[SPEC_VERSION changed from $CACHE_SPEC_VERSION to $SPEC_VERSION, performing online upgrade]" | tee /tmp/runtime_upgrade.txt
+                export SUDO=$(aws secretsmanager get-secret-value --secret-id << parameters.environment >>/blockchain/seeds --query SecretString | jq -r 'fromjson.sudo')
+                export WSS_URL=wss://<< parameters.environment >>.engi.network:9944
+                export WASM=/release/engi_node_runtime.compact.compressed.wasm
+
+                docker run -e SUDO -e WSS_URL -e WASM --rm -ti --entrypoint chain_upgrade $ECR_REF | tee -a /tmp/runtime_upgrade.txt 2>&1
+              else
+                echo "[SPEC_VERSION unchanged $CACHE_SPEC_VERSION == $SPEC_VERSION]" | tee /tmp/runtime_upgrade.txt
+              fi
+            fi
+      - store_artifacts:
+          path: /tmp/runtime_upgrade.txt
+      - save_cache:
+          paths:
+            - ~/.cache/SPEC_VERSION
+          key: v1-<< pipeline.parameters.terraform-app >>-<< parameters.environment >>-spec-version-{{ .BuildNum }}
+          when: on_success
+      - save_cache:
+          paths:
+            - ~/.cache/GIT_COMMIT
+          key: v1-<< pipeline.parameters.terraform-app >>-<< parameters.environment >>-tag-<< parameters.tag >>-{{ .BuildNum }}
+          when: on_success
+# Invoke jobs via workflows
+# See: https://circleci.com/docs/2.0/configuration-reference/#workflows
+workflows:
+  build-test-push-workflow:
+    jobs:
+      - build:
+          name: build-latest
+          tag: latest
+          environment: testnet
+          filters:
+            branches:
+              ignore: main
+          context:
+            - aws
+      - build:
+          name: build-testnet
+          tag: testnet
+          environment: testnet
+          filters:
+            branches:
+              only: main
+          context:
+            - aws
+      - deploy:
+          name: deploy-testnet-<< matrix.region >>
+          environment: testnet
+          requires:
+            - build-testnet
+          matrix:
+            parameters:
+              region:
+                - use1
+                - use2
+                - usw1
+                - usw2
+          context:
+            - terraform
+            - aws
+          filters:
+            branches:
+              only: main
+            tags:
+              only: ""
+  release-workflow:
+    jobs:
+      - build:
+          name: build-mainnet
+          tag: mainnet
+          environment: mainnet
+          context:
+            - aws
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - deploy:
+          name: deploy-mainnet-<< matrix.region >>
+          environment: mainnet
+          requires:
+            - build-mainnet
+          context:
+            - terraform
+            - aws
+          matrix:
+            parameters:
+              region:
+                - use1
+                - use2
+                - usw1
+                - usw2
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
