@@ -1,0 +1,4 @@
+executors:
+  build:
+    machine:
+      image: ubuntu-2004:202201-01

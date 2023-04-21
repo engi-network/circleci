@@ -1,0 +1,26 @@
+orbs:
+  aws-cli: circleci/aws-cli@3.1
+
+commands:
+  fetch-aws-env:
+    parameters:
+      service:
+        type: string
+        default: << pipeline.parameters.project >>
+    steps:
+      - aws-cli/setup:
+          profile-name: default
+      - run:
+          name: "Setup .env"
+          command: |
+            set -x
+            mkdir -p .workspace
+            aws ecs describe-task-definition --task-definition << parameters.service >> |
+            jq -rM '.taskDefinition.containerDefinitions[] as $c | [$c.secrets[]|[.name,.valueFrom]|join(" ")] as $s | [$c.environment[]|[.name,.value]|join("=")] + $s | .[]' |
+            while read env secret_arn; do
+              if [[ -n $secret_arn ]]; then
+                echo $env="$(aws secretsmanager get-secret-value --secret-id $secret_arn | jq -rM .SecretString)"
+              else
+                echo "$env"
+              fi
+            done | tee .env > .workspace/.env

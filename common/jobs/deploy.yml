@@ -1,0 +1,21 @@
+jobs:
+  deploy:
+    executor: build
+    parameters:
+      environment:
+        type: string
+      region:
+        type: string
+    steps:
+      - when:
+          condition:
+            equal: [ << pipeline.parameters.primary_region >>, << parameters.region >> ]
+          steps:
+            - terraform-deploy:
+                terraform-workspace: '<< pipeline.parameters.project >>-<< parameters.environment >>'
+      - unless:
+          condition:
+            equal: [ << pipeline.parameters.primary_region >>, << parameters.region >> ]
+          steps:
+            - terraform-deploy:
+                terraform-workspace: '<< pipeline.parameters.project >>-<< parameters.environment >>-<< parameters.region >>'

@@ -1,0 +1,45 @@
+jobs:
+  build:
+    executor: build
+    parameters:
+      environment:
+        type: string
+      tag:
+        type: string
+        default: latest
+    steps:
+      - checkout
+      - when:
+          condition:
+            equal: [ blockchain, << pipeline.parameters.project >> ]
+          steps:
+            - load_spec_version:
+                environment: << parameters.environment >>
+                tag: << parameters.tag >>
+      - when:
+          condition:
+            equal: [ website, << pipeline.parameters.project >> ]
+          steps:
+            - fetch-aws-env:
+                service: engi-website-<< parameters.environment >>
+      - aws-build:
+          repo: '<< pipeline.parameters.project >>-<< parameters.environment >>'
+          tag: << parameters.tag >>
+          build-args: '--secret id=aws,src=$HOME/.aws/credentials --build-arg ENV=<< parameters.environment >> << pipeline.parameters.build_args >>'
+      - when:
+          condition:
+            equal: [ website, << pipeline.parameters.project >> ]
+          steps:
+            - store_artifacts:
+                path: .env
+                destination: build_env
+      - when:
+          condition:
+            equal: [ blockchain, << pipeline.parameters.project >> ]
+          steps:
+            - spec_upgrade:
+                environment: << parameters.environment >>
+                tag: << parameters.tag >>
+            - store_spec_version:
+                environment: << parameters.environment >>
+                tag: << parameters.tag >>

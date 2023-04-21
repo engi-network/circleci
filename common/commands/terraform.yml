@@ -1,0 +1,37 @@
+commands:
+  terraform-deploy:
+    parameters:
+      terraform-workspace:
+        type: string
+      terraform-version:
+        type: string
+        default: 1.2.2
+      terraform-app:
+        type: string
+        default: << pipeline.parameters.project >>
+      terraform-setup:
+        type: string
+        default: deploy/setup/<< pipeline.parameters.project >>
+    steps:
+      - run:
+          name: "Checkout Terraform sources"
+          command: |
+            git clone git@github.com:engi-network/deploy.git
+      - run:
+          name: Create .terraformrc file locally
+          command: |
+            echo "credentials \"app.terraform.io\" {token =
+            \"$TERRAFORM_TOKEN\"}" > $HOME/.terraformrc
+      - terraform/install:
+          terraform_version: << parameters.terraform-version >>
+      - run:
+          name: Create wrapper for setting TF_WORKSPACE
+          command: |
+            echo 'TF_WORKSPACE="<< parameters.terraform-workspace >>" /usr/local/bin/terraform $*' > ~/bin/terraform
+            chmod +x ~/bin/terraform
+      - terraform/plan:
+          path: << parameters.terraform-setup >>
+          out: /tmp/terraform.plan
+      - terraform/apply:
+          path: << parameters.terraform-setup >>
+          plan: /tmp/terraform.plan

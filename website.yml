@@ -1,37 +1,29 @@
-parameters:
-  nightly_version:
-    type: string
-    default: ""
-  rust_version:
-    type: string
-    default: ""
-
 workflows:
   build-test-push-workflow:
     jobs:
       - build:
           name: build-latest
           tag: latest
-          environment: testnet
+          environment: staging
           filters:
             branches:
               ignore: main
           context:
             - aws
       - build:
-          name: build-testnet
-          tag: testnet
-          environment: testnet
+          name: build-staging
+          tag: staging
+          environment: staging
           filters:
             branches:
               only: main
           context:
             - aws
       - deploy:
-          name: deploy-testnet-<< matrix.region >>
-          environment: testnet
+          name: deploy-staging-<< matrix.region >>
+          environment: staging
           requires:
-            - build-testnet
+            - build-staging
           matrix:
             parameters:
               region:
@@ -49,9 +41,9 @@ workflows:
   release-workflow:
     jobs:
       - build:
-          name: build-mainnet
-          tag: mainnet
-          environment: mainnet
+          name: build-production
+          tag: production
+          environment: production
           context:
             - aws
           filters:
@@ -60,10 +52,10 @@ workflows:
             tags:
               only: /^v.*/
       - deploy:
-          name: deploy-mainnet-<< matrix.region >>
-          environment: mainnet
+          name: deploy-production-<< matrix.region >>
+          environment: production
           requires:
-            - build-mainnet
+            - build-production
           context:
             - terraform
           matrix:

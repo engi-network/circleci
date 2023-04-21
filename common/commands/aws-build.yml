@@ -1,0 +1,36 @@
+commands:
+  aws-build:
+    parameters:
+      repo:
+        type: string
+      tag:
+        type: string
+      build-args:
+        type: string
+    steps:
+      - aws-ecr/ecr-login:
+          registry-id: AWS_ID
+      - aws-ecr/create-repo:
+          repo: '<< parameters.repo >>'
+          repo-scan-on-push: false
+          region: $AWS_REGION
+          profile-name: default
+          public-registry: false
+      - aws-ecr/build-image:
+          repo: '<< parameters.repo >>'
+          registry-id: AWS_ID
+          tag: "<< parameters.tag >>"
+          extra-build-args: '--secret id=aws,src=$HOME/.aws/credentials << parameters.build-args >>'
+          skip-when-tags-exist: true
+          push-image: false
+      - run:
+          name: Push ECR image to AWS
+          command: |
+            read ECR_REPO ECR_TAG < <(
+              docker images \
+                -f 'reference=*/<< parameters.repo >>:<< parameters.tag >>' \
+                --format '{{.Repository}} {{.Tag}}'
+            )
+            ECR_REF="$ECR_REPO:$ECR_TAG"
+            docker image push $ECR_REF
+            echo export ECR_REF=$ECR_REF >> $BASH_ENV

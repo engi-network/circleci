@@ -1,0 +1,10 @@
+parameters:
+  project:
+    type: string
+    default: ""
+  primary_region:
+    type: string
+    default: "usw2"
+  build_args:
+    type: string
+    default: ""

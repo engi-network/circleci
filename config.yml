@@ -1,0 +1,31 @@
+version: 2.1
+
+# this allows you to use CircleCI's dynamic configuration feature
+setup: true
+
+# the continuation orb is required in order to use dynamic configuration
+orbs:
+  continuation: circleci/continuation@0.3.1
+
+# our defined job, and its steps
+jobs:
+  setup:
+    executor: continuation/default
+    steps:
+      - checkout # checkout code
+      - run: # run a command
+          name: Fetch CircleCI config from submodule
+          command: |
+            git submodule update --init --remote
+      - run: # run a command
+          name: Setup config
+          command: .circleci/circleci/bin/setup-config.sh
+      - continuation/continue:
+          configuration_path: .circleci/project.yml # use newly generated config to continue
+          parameters: .circleci/parameters.json
+
+# our single workflow, that triggers the setup job defined above
+workflows:
+  setup:
+    jobs:
+      - setup

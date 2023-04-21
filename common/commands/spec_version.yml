@@ -1,0 +1,102 @@
+parameters:
+  attach_workspace:
+    type: string
+    default: /tmp/persist_workspace
+
+commands:
+  load_spec_version:
+    parameters:
+      environment:
+        type: string
+      tag:
+        type: string
+        default: latest
+    steps:
+      - restore_cache:
+          key: v1-<< pipeline.parameters.project >>-<< parameters.environment >>-spec-version-
+      - restore_cache:
+          key: v1-<< pipeline.parameters.project >>-<< parameters.environment >>-tag-<< parameters.tag >>-
+      - run:
+          name: Load cached variables
+          command: |
+            set -x
+            CACHE_DIR=~/.cache
+            mkdir -p $CACHE_DIR
+
+            for key in GIT_COMMIT SPEC_VERSION; do
+              if [ -e $CACHE_DIR/$key ]; then
+                key_build_num="${key}_build_num"
+                . $CACHE_DIR/$key
+                echo "[Set variable from cache: $key=\"${!key}\" (build #=${!key_build_num})]"
+                {
+                  echo "export CACHE_$key=\"${!key}\""
+                  echo "export CACHE_${key}_build_num=\"${!key_build_num}\""
+                } >> $BASH_ENV
+              fi
+            done
+
+            GIT_COMMIT=$(git log -1 --format=%h)
+            echo "export GIT_COMMIT=\"$GIT_COMMIT\"" >> $BASH_ENV
+  spec_upgrade:
+    parameters:
+      environment:
+        type: string
+      tag:
+        type: string
+        default: latest
+    steps:
+      - run:
+          name: Set current spec version and git commit for caching
+          command: |
+            set -x
+
+            container_id=$(docker create $ECR_REF)
+            docker cp $container_id:/release/build.txt .build.txt
+            . .build.txt
+            echo SPEC_VERSION=$SPEC_VERSION >> $BASH_ENV
+            echo CONTAINER_ID=$container_id >> $BASH_ENV
+
+            for key in GIT_COMMIT SPEC_VERSION; do
+              echo "[Saving key for cache: $key=\"${!key}\"]"
+              {
+                echo "$key=\"${!key}\""
+                echo "${key}_build_num=\"$CIRCLE_BUILD_NUM\""
+              } > ~/.cache/$key
+            done
+      - run:
+          name: Apply runtime upgrade if spec_version changed
+          no_output_timeout: "5m"
+          command: |
+            # Do not upgrade from branch builds (latest tag)
+            if [[ "<< parameters.tag >>" != "latest" ]]; then
+              if [[ "$SPEC_VERSION" != "$CACHE_SPEC_VERSION" ]]; then
+                echo "[SPEC_VERSION changed from $CACHE_SPEC_VERSION to $SPEC_VERSION, performing online upgrade]" | tee /tmp/runtime_upgrade.txt
+                export SUDO=$(aws secretsmanager get-secret-value --secret-id << parameters.environment >>/blockchain/seeds --query SecretString | jq -r 'fromjson.sudo')
+                export WSS_URL=wss://<< parameters.environment >>.engi.network:9944
+                export WASM=/release/engi_node_runtime.compact.compressed.wasm
+
+                docker run -e SUDO -e WSS_URL -e WASM --rm -ti --entrypoint chain_upgrade $ECR_REF | tee -a /tmp/runtime_upgrade.txt 2>&1
+              else
+                echo "[SPEC_VERSION unchanged $CACHE_SPEC_VERSION == $SPEC_VERSION]" | tee /tmp/runtime_upgrade.txt
+              fi
+            fi
+  store_spec_version:
+    parameters:
+      environment:
+        type: string
+      tag:
+        type: string
+        default: latest
+    steps:
+      - store_artifacts:
+          path: /tmp/runtime_upgrade.txt
+      - save_cache:
+          paths:
+            - ~/.cache/SPEC_VERSION
+          key: v1-<< pipeline.parameters.project >>-<< parameters.environment >>-spec-version-{{ .BuildNum }}
+          when: on_success
+      - save_cache:
+          paths:
+            - ~/.cache/GIT_COMMIT
+          key: v1-<< pipeline.parameters.project >>-<< parameters.environment >>-tag-<< parameters.tag >>-{{ .BuildNum }}
+          when: on_success
