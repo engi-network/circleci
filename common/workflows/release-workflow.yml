@@ -1,0 +1,33 @@
+workflows:
+  release-workflow:
+    jobs:
+      - build:
+          name: build-<< pipeline.parameters.environment >>
+          tag: << pipeline.parameters.environment >>
+          environment: << pipeline.parameters.environment >>
+          context:
+            - aws
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - deploy:
+          name: deploy-<< pipeline.parameters.environment >>-<< matrix.region >>
+          environment: << pipeline.parameters.environment >>
+          requires:
+            - build-<< pipeline.parameters.environment >>
+          context:
+            - terraform
+          matrix:
+            parameters:
+              region:
+                - use1
+                - use2
+                - usw1
+                - usw2
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/

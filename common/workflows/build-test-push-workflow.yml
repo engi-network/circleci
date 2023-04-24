@@ -1,0 +1,40 @@
+workflows:
+  build-test-push-workflow:
+    jobs:
+      - build:
+          name: build-latest
+          tag: latest
+          environment: << pipeline.parameters.environment >>
+          filters:
+            branches:
+              ignore: << pipeline.parameters.primary_branch >>
+          context:
+            - aws
+      - build:
+          name: build-<< pipeline.parameters.environment >>
+          tag: << pipeline.parameters.environment >>
+          environment: << pipeline.parameters.environment >>
+          filters:
+            branches:
+              only: << pipeline.parameters.primary_branch >>
+          context:
+            - aws
+      - deploy:
+          name: deploy-<< pipeline.parameters.environment >>-<< matrix.region >>
+          environment: << pipeline.parameters.environment >>
+          requires:
+            - build-<< pipeline.parameters.environment >>
+          matrix:
+            parameters:
+              region:
+                - use1
+                - use2
+                - usw1
+                - usw2
+          context:
+            - terraform
+          filters:
+            branches:
+              only: << pipeline.parameters.primary_branch >>
+            tags:
+              only: ""
