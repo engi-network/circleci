@@ -4,26 +4,26 @@ workflows:
       - build:
           name: build-latest
           tag: latest
-          environment: testnet
+          environment: << pipeline.parameters.environment >>
           filters:
             branches:
-              ignore: main
+              ignore: << pipeline.parameters.primary_branch >>
           context:
             - aws
       - build:
-          name: build-testnet
-          tag: testnet
-          environment: testnet
+          name: build-<< pipeline.parameters.environment >>
+          tag: << pipeline.parameters.environment >>
+          environment: << pipeline.parameters.environment >>
           filters:
             branches:
-              only: main
+              only: << pipeline.parameters.primary_branch >>
           context:
             - aws
       - deploy:
-          name: deploy-testnet-<< matrix.region >>
-          environment: testnet
+          name: deploy-<< pipeline.parameters.environment >>-<< matrix.region >>
+          environment: << pipeline.parameters.environment >>
           requires:
-            - build-testnet
+            - build-<< pipeline.parameters.environment >>
           matrix:
             parameters:
               region:
@@ -35,38 +35,6 @@ workflows:
             - terraform
           filters:
             branches:
-              only: main
+              only: << pipeline.parameters.primary_branch >>
             tags:
               only: ""
-  release-workflow:
-    jobs:
-      - build:
-          name: build-mainnet
-          tag: mainnet
-          environment: mainnet
-          context:
-            - aws
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v.*/
-      - deploy:
-          name: deploy-mainnet-<< matrix.region >>
-          environment: mainnet
-          requires:
-            - build-mainnet
-          context:
-            - terraform
-          matrix:
-            parameters:
-              region:
-                - use1
-                - use2
-                - usw1
-                - usw2
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v.*/
