@@ -1,0 +1,92 @@
+jobs:
+  test:
+    executor: build
+    steps:
+      - checkout
+      - run:
+          name: "Make .env"
+          command: |
+            python3 make_env.py >.env
+      - run:
+          name: "Install Docker Compose Plugin"
+          command: |
+            sudo mkdir -p /etc/apt/keyrings && 
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg &&
+            echo \
+              "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+              $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null &&
+            sudo apt-get update &&
+            sudo apt-get install docker-compose-plugin
+      - run:
+          name: "Login to ECR"
+          command: |
+            aws ecr get-login-password | docker login --username AWS --password-stdin 163803973373.dkr.ecr.us-west-2.amazonaws.com
+      - run:
+          name: "Build and run tests"
+          command: |
+            docker compose build
+            docker compose up --exit-code-from tests
+
+workflows:
+  build-test-push-workflow:
+    jobs:
+      - test:
+          context:
+            - aws
+            - github
+            - git-secrets
+      - build:
+          name: build-latest
+          tag: latest
+          environment: << pipeline.parameters.environment >>
+          requires:
+            - test
+          filters:
+            branches:
+              ignore: "<< pipeline.parameters.primary_branch >>"
+          context:
+            - aws
+      - build:
+          name: build-<< pipeline.parameters.environment >>
+          tag: << pipeline.parameters.environment >>
+          environment: << pipeline.parameters.environment >>
+          requires:
+            - test
+          filters:
+            branches:
+              only: "<< pipeline.parameters.primary_branch >>"
+            tags:
+              only: /.*/
+          context:
+            - aws
+  release-workflow:
+    jobs:
+      - build:
+          name: build-mainnet
+          tag: mainnet
+          environment: mainnet
+          context:
+            - aws
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - deploy:
+          name: deploy-<< pipeline.parameters.environment >>-<< matrix.region >>
+          environment: << pipeline.parameters.environment >>
+          requires:
+            - build-<< pipeline.parameters.environment >>
+          matrix:
+            parameters:
+              region:
+                - use1
+                - use2
+                - usw1
+                - usw2
+          context:
+            - terraform
+            - aws
+          filters:
+            tags:
+              only: /.*/
