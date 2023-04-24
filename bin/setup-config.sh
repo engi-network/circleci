@@ -54,4 +54,4 @@ eval env -i $(
 
 sed -r 's/"(false|true)"(,)?$/\1\2/' > .circleci/parameters.json
 
-yq ea '. as $item ireduce({}; . * $item )' .circleci/circleci/common/{headers,executors,parameters}.yml .circleci/circleci/common/{commands,jobs}/*.yml .circleci/circleci/${CIRCLE_PROJECT_REPONAME}.yml .circleci/circleci/common/workflows/{build-test-push-workflow,release-workflow.yml}.yml > .circleci/project.yml
+yq ea '. as $item ireduce({}; . * $item )' .circleci/circleci/common/{headers,executors,parameters}.yml .circleci/circleci/common/{commands,jobs}/*.yml .circleci/circleci/${CIRCLE_PROJECT_REPONAME}.yml .circleci/circleci/common/workflows/{build-test-push-workflow,release-workflow}.yml > .circleci/project.yml
