@@ -1,11 +1,3 @@
-parameters:
-  nightly_version:
-    type: string
-    default: ""
-  rust_version:
-    type: string
-    default: ""
-
 workflows:
   build-test-push-workflow:
     jobs:

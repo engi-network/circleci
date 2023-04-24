@@ -2,6 +2,15 @@ parameters:
   project:
     type: string
     default: ""
+  primary_branch:
+    type: string
+    default: "main"
+  release:
+    type: boolean
+    default: false
+  environment:
+    type: string
+    default: "staging"
   primary_region:
     type: string
     default: "usw2"
