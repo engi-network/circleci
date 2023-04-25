@@ -18,17 +18,22 @@ jobs:
                 tag: << parameters.tag >>
       - when:
           condition:
-            equal: [ website, << pipeline.parameters.project >> ]
+            equal: [ engi-website, << pipeline.parameters.project >> ]
           steps:
             - fetch-aws-env:
                 service: engi-website-<< parameters.environment >>
+      - when:
+          condition:
+            equal: [ graphql, << pipeline.parameters.project >> ]
+          steps:
+            - build-docs
       - aws-build:
           repo: '<< pipeline.parameters.project >>-<< parameters.environment >>'
           tag: << parameters.tag >>
           build-args: '--secret id=aws,src=$HOME/.aws/credentials --build-arg ENV=<< parameters.environment >> << pipeline.parameters.build_args >>'
       - when:
           condition:
-            equal: [ website, << pipeline.parameters.project >> ]
+            equal: [ engi-website, << pipeline.parameters.project >> ]
           steps:
             - store_artifacts:
                 path: .env

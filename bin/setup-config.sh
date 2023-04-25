@@ -13,6 +13,13 @@ tags=($(git for-each-ref --points-at HEAD --format '%(refname:lstrip=2)' refs/ta
 echo "[branches are: ${branches[@]}]"
 echo "[tags are: ${tags[@]}]"
 
+if [[ "$CIRCLE_PROJECT_REPONAME" == "engi-blockchain-gql" ]]; then
+  CIRCLE_PROJECT_REPONAME="graphql"
+fi
+if [[ "$CIRCLE_PROJECT_REPONAME" == "website" ]]; then
+  CIRCLE_PROJECT_REPONAME="engi-website"
+fi
+
 PARAMS[build_args]="$build_args"
 PARAMS[project]="$CIRCLE_PROJECT_REPONAME"
 

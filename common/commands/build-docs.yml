@@ -1,0 +1,8 @@
+commands:
+  build-docs:
+    steps:
+      - run:
+          name: "Build docs"
+          command: |
+            set -x
+            docker-compose -f docker-compose-generate-docs.yml up --exit-code-from docs
