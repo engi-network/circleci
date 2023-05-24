@@ -4,7 +4,7 @@ parameters:
     default: /tmp/persist_workspace
   override_spec_version:
     type: integer
-    default: 0
+    default: 109
 
 commands:
   load_spec_version:
