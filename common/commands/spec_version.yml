@@ -2,6 +2,9 @@ parameters:
   attach_workspace:
     type: string
     default: /tmp/persist_workspace
+  override_spec_version:
+    type: integer
+    default: 0
 
 commands:
   load_spec_version:
@@ -53,6 +56,11 @@ commands:
             container_id=$(docker create $ECR_REF)
             docker cp $container_id:/release/build.txt .build.txt
             . .build.txt
+            
+            if (( << pipeline.parameters.override_spec_version >> )); then
+                SPEC_VERSION=<< pipeline.parameters.override_spec_version >>
+            fi
+
             echo SPEC_VERSION=$SPEC_VERSION >> $BASH_ENV
             echo CONTAINER_ID=$container_id >> $BASH_ENV
 
