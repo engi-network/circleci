@@ -26,6 +26,11 @@ commands:
             CACHE_DIR=~/.cache
             mkdir -p $CACHE_DIR
 
+            if (( << pipeline.parameters.override_spec_version >> )); then
+                echo "Overriding spec version from $SPEC_VERSION to << pipeline.parameters.override_spec_version >>"
+                SPEC_VERSION=<< pipeline.parameters.override_spec_version >>
+            fi
+
             for key in GIT_COMMIT SPEC_VERSION; do
               if [ -e $CACHE_DIR/$key ]; then
                 key_build_num="${key}_build_num"
@@ -57,10 +62,6 @@ commands:
             docker cp $container_id:/release/build.txt .build.txt
             . .build.txt
             
-            if (( << pipeline.parameters.override_spec_version >> )); then
-                SPEC_VERSION=<< pipeline.parameters.override_spec_version >>
-            fi
-
             echo SPEC_VERSION=$SPEC_VERSION >> $BASH_ENV
             echo CONTAINER_ID=$container_id >> $BASH_ENV
 
