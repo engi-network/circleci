@@ -16,7 +16,7 @@ commands:
       - run:
           name: "Setup Terraform organization name"
           command: |
-            if [[ $CIRCLE_JOB =~ ^deploy-production- ]]; then
+            if [[ $CIRCLE_JOB =~ ^deploy-(mainnet|production)(-.|$) ]]; then
               echo "Setting Terraform organization or production"
               echo TF_CLOUD_ORGANIZATION=engi-production >> $BASH_ENV
             fi
