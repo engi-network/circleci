@@ -40,6 +40,9 @@ commands:
             echo export ECR_REF=$ECR_REF >> $BASH_ENV
             echo export ECR_REPO_NAME=$ECR_REPO_NAME >> $BASH_ENV
             echo export ECR_REPO_TAG=$ECR_REPO_TAG >> $BASH_ENV
+      - aws-ecr/ecr-login:
+          registry-id: AWS_ID
+          public-registry: true
       - run:
           name: Push public ECR image to AWS
           command: |
