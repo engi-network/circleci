@@ -24,13 +24,33 @@ commands:
           skip-when-tags-exist: true
           push-image: false
       - run:
-          name: Push ECR image to AWS
+          name: Push private ECR image to AWS
           command: |
+            ECR_REPO_NAME="<< parameters.repo >>"
+            ECR_REPO_TAG="<< parameters.tag >>"
+
             read ECR_REPO ECR_TAG < <(
               docker images \
-                -f 'reference=*/<< parameters.repo >>:<< parameters.tag >>' \
+                -f "reference=*/$ECR_REPO_NAME:$ECR_REPO_TAG" \
                 --format '{{.Repository}} {{.Tag}}'
             )
             ECR_REF="$ECR_REPO:$ECR_TAG"
             docker image push $ECR_REF
+
             echo export ECR_REF=$ECR_REF >> $BASH_ENV
+            echo export ECR_REPO_NAME=$ECR_REPO_NAME >> $BASH_ENV
+            echo export ECR_REPO_TAG=$ECR_REPO_TAG >> $BASH_ENV
+      - run:
+          name: Push public ECR image to AWS
+            PUBLIC_REPO_URL='public.ecr.aws/engi'
+
+            if [[ "$ECR_REPO_NAME" =~ -(production|mainnet)$ ]]; then
+              PUB_REF="$PUBLIC_REPO_URL/${ECR_REPO_NAME/-*}:$ECR_REPO_TAG"
+            else
+              PUB_REF="$PUBLIC_REPO_URL/$ECR_REPO_NAME:$ECR_REPO_TAG"
+            fi
+
+            docker image tag $ECR_REF $PUB_REF
+            docker image push $PUB_REF
+
+            echo export PUB_REF=$PUB_REF >> $BASH_ENV
