@@ -48,8 +48,10 @@ commands:
           command: |
             PUBLIC_REPO_URL='public.ecr.aws/engi'
 
-            if [[ "$ECR_REPO_NAME" =~ -(production|mainnet)$ ]]; then
-              PUB_REF="$PUBLIC_REPO_URL/${ECR_REPO_NAME/-*}:$ECR_REPO_TAG"
+            if [[ "$ECR_REPO_NAME" =~ -production$ ]]; then
+              PUB_REF="$PUBLIC_REPO_URL/${ECR_REPO_NAME/-production}:$ECR_REPO_TAG"
+            elif [[ "$ECR_REPO_NAME" =~ -mainnet$ ]]; then
+              PUB_REF="$PUBLIC_REPO_URL/${ECR_REPO_NAME/-mainnet}:$ECR_REPO_TAG"
             else
               PUB_REF="$PUBLIC_REPO_URL/$ECR_REPO_NAME:$ECR_REPO_TAG"
             fi
