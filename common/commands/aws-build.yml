@@ -46,7 +46,7 @@ commands:
       - run:
           name: Push public ECR image to AWS
           command: |
-            PUBLIC_REPO_URL='public.ecr.aws/engi'
+            PUBLIC_REPO_URL='public.ecr.aws/k6z4n3q8'
 
             if [[ "$ECR_REPO_NAME" =~ -production$ ]]; then
               PUB_REF="$PUBLIC_REPO_URL/${ECR_REPO_NAME/-production}:$ECR_REPO_TAG"
